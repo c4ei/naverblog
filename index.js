@@ -25,57 +25,55 @@ async function autoLikeNaverBlog() {
       "--no-sandbox",
     ],
   });
-  // if(!browser) browser = await puppeteer.launch({
-  //   headless: true, // NO SHOW
-  //   executablePath: '/usr/bin/chromium-browser',
-  //   args: ['--disable-gpu', '--disable-setuid-sandbox', '--no-sandbox', '--no-zygote']
-  // });
-  // const page = await browser.newPage();
-  const page1 = (await browser.pages())[0]; // 첫 번째 탭
-  // let currentPage = 1;
 
+  const page1 = (await browser.pages())[0]; // 첫 번째 탭
 
   const page2 = await browser.newPage();
   await page2.goto("https://m.naver.com", { waitUntil: "networkidle2" });
   await page2.goto(_gotoUrl3, { waitUntil: "networkidle2" });
   // ID와 비밀번호 입력 후 로그인 버튼 클릭
+  // await page2.click("#locale_switch > option:nth-child(1)");
   await page2.type("#id", USER_ID);
   await new Promise((resolve) => setTimeout(resolve, 1000 * 1)); // 1s 대기
   await page2.type("#pw", USER_PASSWORD);
   await new Promise((resolve) => setTimeout(resolve, 1000 * 2)); // 2 대기
-  await page2.click("#submit_btn");
+  // await page2.click("#submit_btn");
   // console.log("page.click -> #submit_btn ");
   // await new Promise((resolve) => setTimeout(resolve, 1000 * 6)); // 6 대기
+  // 로그인 완료 대기
+  await page2.waitForNavigation();
 
 
+  // 특정 URL이 로드될 때까지 대기하는 함수
+  await page2.waitForFunction(`window.location.href === '${_gotoUrl2}'`, { timeout: 60000 });
+  console.log(`URL이 ${_gotoUrl2}로 로드되었습니다.`);
+
+  // console.log("######### 57 #########");
   try {
     await page1.bringToFront(); // 탭 전환
     await page1.setViewport({ width: 0, height: 0 });
-    // 네이버 로그인 페이지로 이동
-    // await page.goto("https://nid.naver.com/nidlogin.login");
-    await page1.goto(_gotoUrl1);
-    await page1.waitForSelector("body");
-    await new Promise((resolve) => setTimeout(resolve, 1000 * 5)); // 6 대기
-
-    await page1.goto(_gotoUrl2);
-    await page1.waitForSelector("body");
-    await new Promise((resolve) => setTimeout(resolve, 1000 * 5)); // 6 대기
-
-    await page1.goto(_gotoUrl3);
-    await page1.waitForSelector("body");
-    await new Promise((resolve) => setTimeout(resolve, 1000 * 5)); // 6 대기
-
-
-    // await page.waitForSelector("body");
-    // await new Promise(resolve => setTimeout(resolve, 1000*5)); // 5s 대기
-
     await page1.goto(_gotoUrl4);
     await page1.waitForSelector("body");
-    await fn_wait(3, 3);
-    // await page2.click("#root > nav > div > span:nth-child(1) > a > span");
-    await fn_wait(3, 3);
-    fn_senWheel(400);
 
+    // fn_senWheel(400);
+    // console.log("goto(_gotoUrl4)");
+
+    try{
+      const targetSelector = '#root > nav > div > span:nth-child(1) > a';
+      await page1.waitForSelector(targetSelector);
+  
+      const likeButton = await page1.$(targetSelector);
+      likeButton.click();
+      console.log("likeButton.click();");
+    }catch(e){
+      console.log(e +" : e ");
+      await page1.goto(_gotoUrl4); // 에러시 다시 보내기
+      await page1.waitForSelector("body");
+    }
+
+    await page1.waitForFunction(`window.location.href === '${_gotoUrl4}'`, { timeout: 60000 });
+    console.log(`URL이 ${_gotoUrl4}로 로드되었습니다.`);
+  
     // 우클릭 이벤트를 시뮬레이트하기 위해 페이지에 JavaScript를 주입합니다.
     await page1.evaluate(() => {
       document.addEventListener('dblclick', async (event) => {
@@ -108,7 +106,7 @@ async function autoLikeNaverBlog() {
     while (true) {
       // off 클래스를 가진 하트 요소를 가져옴
       const offHearts = await page1.$$('.u_likeit_list_btn._button.off');
-      
+      // console.log(JSON.stringify(offHearts));
       // off 클래스를 가진 하트가 없으면 종료
       if (offHearts.length === 0) {
         console.log('모든 off 하트를 클릭했습니다.');
@@ -130,20 +128,65 @@ async function autoLikeNaverBlog() {
       });
       await fn_wait(1, 2);
       // 스크롤 이후에 새로운 하트가 로드될 때까지 기다림
-      await page1.waitForFunction(`document.querySelector('.u_likeit_list_btn._button.off') !== null`);
+      try{
+        await page1.waitForFunction(`document.querySelector('.u_likeit_list_btn._button.off') !== null`);
+      }catch(e){
+        break;
+      }
 
       // 스크롤 이후의 페이지 높이를 가져옴
       const currentHeight = await page1.evaluate('document.body.scrollHeight');
 
       // 이전 스크롤 높이와 현재 스크롤 높이가 같으면 스크롤이 더이상 되지 않은 것이므로 종료
       if (previousHeight === currentHeight) {
-        console.log('더 이상 스크롤할 수 없습니다.');
+        console.log('더 이상 스크롤할 수 없습니다.'+getCurTimestamp());
         break;
       }
 
       previousHeight = currentHeight; // 현재 스크롤 높이를 이전 스크롤 높이로 설정
       // await page1.waitForTimeout(3000); // 클릭 후 1초 대기
       await fn_wait(3, 3);
+    }
+
+    /////////////////////////////
+    // 이웃 리스트 페이지로 이동
+    const buddyListUrl = 'https://m.blog.naver.com/BuddyList.naver?blogId=aahcoin';
+    await page1.goto(buddyListUrl);
+
+    // 이웃 리스트에서 각 이웃 블로그 링크를 추출
+    const buddyLinks = await page1.evaluate(() => {
+      const links = [];
+      document.querySelectorAll('.list_item .nickname').forEach((element) => {
+        links.push(element.href);
+      });
+      return links;
+    });
+
+    for (const link of buddyLinks) {
+      await page1.goto(link);
+
+      // 특정 대기 시간 적용 (네트워크 상황에 따라 조정)
+      await page1.waitForTimeout(2000);
+
+      // "좋아요" 버튼 존재 여부 확인
+      const likeButtonSelector = '.u_likeit_list_btn';
+      const likedClass = 'u_likeit_list_btn_on';
+
+      const isLiked = await page.evaluate((likeButtonSelector, likedClass) => {
+        const likeButton = document.querySelector(likeButtonSelector);
+        if (likeButton) {
+          return likeButton.classList.contains(likedClass);
+        }
+        return false;
+      }, likeButtonSelector, likedClass);
+
+      if (!isLiked) {
+        await page1.click(likeButtonSelector);
+        console.log(`좋아요 클릭: ${link}`);
+        await page1.waitForTimeout(1000); // "좋아요" 클릭 후 대기 시간
+      } else {
+        console.log(`이미 좋아요 클릭됨: ${link}`);
+      }
     }
 
     async function fn_wait(_start, _end) {
